@@ -296,23 +296,53 @@ export class MQTTConnectionManager {
     /**
      * Send message to friend
      */
-    async sendFriendMessage(friendId: string, message: string): Promise<void> {
+    async sendFriendMessage(friendId: string, text: string): Promise<void> {
         if (!this.config?.userId) {
             throw new Error('Not connected. Call connect() first.');
         }
 
         const topic = MQTTTopics.friendChat(this.config.userId, friendId);
-        await this.mqtt.publish(topic, message, { qos: 1, retained: false });
-        console.log('[MQTTManager] Message sent to friend:', friendId);
+        const now = Date.now().toString();
+
+        const payload = JSON.stringify({
+            id: now,                    // Android uses timestamp string as ID
+            case: 'chatv2',
+            message: text,
+            type: 'txt',
+            senderId: this.config.userId,
+            receiverId: friendId,       // Required by official Android app
+            topic: topic,               // Required by official Android app
+            timestamp: now,
+            isDelivered: false,
+            isLiked: false,
+            image: "",
+            v: 2
+        });
+
+        await this.mqtt.publish(topic, payload, { qos: 1, retained: false });
+        console.log(`[MQTTManager] Sent Android-compliant message to: ${topic}`);
     }
 
     /**
      * Send message to group
      */
-    async sendGroupMessage(clanId: string, message: string, subTopic: string = 'messages'): Promise<void> {
+    async sendGroupMessage(clanId: string, text: string, subTopic: string = 'messages'): Promise<void> {
+        if (!this.config?.userId) {
+            throw new Error('Not connected. Call connect() first.');
+        }
+
         const topic = MQTTTopics.groupChatPublish(clanId, subTopic);
-        await this.mqtt.publish(topic, message, { qos: 1, retained: false });
-        console.log('[MQTTManager] Message sent to group:', clanId);
+
+        const payload = JSON.stringify({
+            case: 'clanchat',
+            message: text,
+            type: 'txt',
+            senderId: this.config.userId,
+            timestamp: Date.now()
+        });
+
+        await this.mqtt.publish(topic, payload, { qos: 1, retained: false });
+        console.log('[MQTTManager] ClanChat message sent to group:', clanId);
     }
 
     /**
@@ -384,7 +414,8 @@ export class MQTTConnectionManager {
 /**
  * Hook to use MQTT Connection Manager
  */
+import { useMemo as useMemoReact } from 'react';
 export const useMQTTConnectionManager = (options?: any) => {
     const mqtt = useMQTT(options);
-    return new MQTTConnectionManager(mqtt);
+    return useMemoReact(() => new MQTTConnectionManager(mqtt), [mqtt]);
 };

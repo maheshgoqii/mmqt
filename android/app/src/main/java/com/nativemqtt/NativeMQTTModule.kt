@@ -40,7 +40,7 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
       val protocol = config.getString("protocol") ?: "tcp"
 
       // Build server URI
-      serverUri =
+      val newServerUri =
               when (protocol) {
                 "ssl", "tls" -> "ssl://$host:$port"
                 "ws" -> "ws://$host:$port"
@@ -48,9 +48,41 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
                 else -> "tcp://$host:$port"
               }
 
-      Log.d(TAG, "Initializing MQTT client: $serverUri (clientId: $clientId)")
+      Log.d(TAG, "Initializing MQTT client: $newServerUri (clientId: $clientId)")
 
-      // Create MQTT client
+      // OPTIMIZATION: Only skip recreation if the client exists, matches, AND is connected.
+      // If it's not connected, it might be in a "closed" state (e.g. after a destroy call),
+      // so it's safer to recreate it.
+      if (mqttClient != null &&
+                      serverUri == newServerUri &&
+                      this.clientId == clientId &&
+                      mqttClient?.isConnected == true
+      ) {
+        Log.d(TAG, "Matching active MQTT client already exists. Skipping recreation.")
+        promise.resolve(null)
+        return
+      }
+
+      // CLEANUP: If a client exists but it's not active or config changed, clean it up.
+      mqttClient?.let { client ->
+        try {
+          Log.d(TAG, "Cleaning up existing MQTT client instance")
+          if (client.isConnected) {
+            client.disconnect()
+          }
+          client.unregisterResources()
+          // Note: Avoid aggressive close() here as it might be redundant if the object is being
+          // replaced immediately
+        } catch (e: Exception) {
+          Log.e(TAG, "Error during existing client cleanup", e)
+        }
+      }
+
+      // Update state
+      this.serverUri = newServerUri
+      this.clientId = clientId
+
+      // Create new MQTT client
       mqttClient =
               MqttAndroidClient(
                       reactApplicationContext,
@@ -109,9 +141,22 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
 
       // Set up callbacks
       mqttClient?.setCallback(
-              object : MqttCallback {
+              object : MqttCallbackExtended {
+                override fun connectComplete(reconnect: Boolean, serverURI: String?) {
+                  Log.d(TAG, ">>> Connection Complete <<<")
+                  Log.d(TAG, "Reconnect: $reconnect")
+                  Log.d(TAG, "Server URI: $serverURI")
+
+                  if (reconnect) {
+                    sendEvent("onReconnect", null)
+                  }
+                }
+
                 override fun connectionLost(cause: Throwable?) {
-                  Log.d(TAG, "Connection lost: ${cause?.message}")
+                  Log.e(TAG, "!!! Connection Lost !!!")
+                  Log.e(TAG, "Cause: ${cause?.message}")
+                  cause?.printStackTrace()
+
                   val params =
                           Arguments.createMap().apply {
                             putString("message", cause?.message ?: "Connection lost")
@@ -159,7 +204,8 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
               mqttConnectOptions ?: throw Exception("Options not set. Call initialize() first.")
 
       if (client.isConnected) {
-        promise.reject("ALREADY_CONNECTED", "Client is already connected")
+        Log.d(TAG, "Client is already connected. Resolving immediately.")
+        promise.resolve(null)
         return
       }
 
@@ -248,7 +294,8 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
       val options = mqttConnectOptions ?: throw Exception("Options not set")
 
       if (client.isConnected) {
-        promise.reject("ALREADY_CONNECTED", "Client is already connected")
+        Log.d(TAG, "Client is already connected. Resolving immediately.")
+        promise.resolve(null)
         return
       }
 

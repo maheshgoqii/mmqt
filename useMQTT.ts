@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { NativeEventEmitter, Platform } from 'react-native';
 import NativeMQTT from './specs/NativeMQTT';
 
@@ -151,7 +151,7 @@ export const useMQTT = (options?: MQTTHookOptions) => {
         }
     }, [options]);
 
-    return {
+    return useMemo(() => ({
         initialize,
         connect,
         disconnect,
@@ -161,5 +161,15 @@ export const useMQTT = (options?: MQTTHookOptions) => {
         isConnected,
         getConnectionStatus,
         destroy,
-    };
+    }), [
+        initialize,
+        connect,
+        disconnect,
+        publish,
+        subscribe,
+        unsubscribe,
+        isConnected,
+        getConnectionStatus,
+        destroy,
+    ]);
 };

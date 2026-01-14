@@ -1,4 +1,4 @@
-import { NativeEventEmitter, Platform } from 'react-native';
+import { NativeEventEmitter, Platform, EmitterSubscription } from 'react-native';
 import NativeMQTT from '../specs/NativeMQTT';
 import type {
     MQTTConfig,
@@ -14,11 +14,12 @@ import type {
 } from '../specs/NativeMQTT';
 
 // Create event emitter from the native module
+// For TurboModules, we pass the module instance to NativeEventEmitter.
 const eventEmitter = new NativeEventEmitter(
-    Platform.OS === 'ios' ? null : (NativeMQTT as any)
+    Platform.OS === 'ios' ? undefined : (NativeMQTT as any)
 );
 
-// Re-export all spec types
+// Re-export all spec types so consumers don't have to import from specs directly
 export type {
     MQTTConfig,
     MQTTSSLConfig,
@@ -34,6 +35,9 @@ export type {
 
 /**
  * Initialize the MQTT client with provided configuration.
+ * @param config - MQTT connection configuration
+ * @param sslConfig - Optional SSL/TLS configuration
+ * @param willConfig - Optional Last Will and Testament configuration
  */
 export async function initialize(
     config: MQTTConfig,
@@ -58,7 +62,7 @@ export async function disconnect(): Promise<void> {
 }
 
 /**
- * Attempt to reconnect to the MQTT broker.
+ * Attempt to reconnect to the MQTT broker using existing configuration.
  */
 export async function reconnect(): Promise<void> {
     return await NativeMQTT.reconnect();
@@ -80,6 +84,9 @@ export async function getConnectionStatus(): Promise<string> {
 
 /**
  * Publish a message to a specific topic.
+ * @param topic - MQTT topic
+ * @param message - Message payload (string)
+ * @param options - Optional publish options (QoS, retained)
  */
 export async function publish(
     topic: string,
@@ -91,6 +98,8 @@ export async function publish(
 
 /**
  * Subscribe to a topic or topic pattern.
+ * @param topic - MQTT topic (supports wildcards + and #)
+ * @param options - Optional subscribe options (QoS)
  */
 export async function subscribe(
     topic: string,
@@ -114,16 +123,6 @@ export async function destroy(): Promise<void> {
 }
 
 /**
- * Add a listener for MQTT events.
- */
-export function addListener<T extends keyof MQTTEventMap>(
-    event: T,
-    callback: (data: MQTTEventMap[T]) => void
-) {
-    return eventEmitter.addListener(event, callback);
-}
-
-/**
  * Map of MQTT events and their respective payload types.
  */
 export interface MQTTEventMap {
@@ -140,7 +139,23 @@ export interface MQTTEventMap {
     onDestroy: void;
 }
 
-export default {
+/**
+ * Add a listener for MQTT events.
+ * @param event - Event name from MQTTEventMap
+ * @param callback - Function called when event is received
+ * @returns EmitterSubscription to allow removing the listener
+ */
+export function addListener<T extends keyof MQTTEventMap>(
+    event: T,
+    callback: (data: MQTTEventMap[T]) => void
+): EmitterSubscription {
+    return eventEmitter.addListener(event, callback);
+}
+
+/**
+ * Export default object containing all MQTT methods.
+ */
+const MQTT = {
     initialize,
     connect,
     disconnect,
@@ -153,3 +168,5 @@ export default {
     destroy,
     addListener,
 };
+
+export default MQTT;
