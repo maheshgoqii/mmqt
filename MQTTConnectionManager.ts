@@ -121,7 +121,7 @@ export const MQTTTopics = {
      * @param subTopic - Subtopic (e.g., 'messages', 'notifications')
      * @returns Topic string like "clan/123/messages"
      */
-    groupChatPublish: (clanId: string, subTopic: string = 'messages'): string => {
+    groupChatPublish: (clanId: string, subTopic: string = 'message'): string => {
         return `clan/${clanId}/${subTopic}`;
     },
 
@@ -328,23 +328,32 @@ export class MQTTConnectionManager {
     /**
      * Send message to group
      */
-    async sendGroupMessage(clanId: string, text: string, subTopic: string = 'messages'): Promise<void> {
+    async sendGroupMessage(clanId: string, text: string, subTopic: string = 'message'): Promise<void> {
         if (!this.config?.userId) {
             throw new Error('Not connected. Call connect() first.');
         }
 
         const topic = MQTTTopics.groupChatPublish(clanId, subTopic);
+        const now = Date.now().toString();
 
         const payload = JSON.stringify({
+            id: now,
             case: 'clanchat',
             message: text,
             type: 'txt',
             senderId: this.config.userId,
-            timestamp: Date.now()
+            senderName: "React Native User", // Should be provided in config ideally
+            receiverId: clanId,
+            topic: topic,
+            timestamp: now,
+            isDelivered: false,
+            isLiked: false,
+            image: "",
+            v: 2
         });
 
         await this.mqtt.publish(topic, payload, { qos: 1, retained: false });
-        console.log('[MQTTManager] ClanChat message sent to group:', clanId);
+        console.log(`[MQTTManager] ClanChat message sent to: ${topic}`);
     }
 
     /**
