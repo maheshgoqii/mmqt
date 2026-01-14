@@ -36,8 +36,14 @@ function App() {
   const [chatMode, setChatMode] = useState<ChatMode>('friend');
 
   const mqttConfig: MQTTDynamicConfig = useMemo(
+    // () => ({
+    //   brokerUrl: 'wss://vernmq.goqii.com:9002',
+    //   userId: `6163344`,
+    //   authId: 'bWFoZXNobWVzdHJpNzNAZ21haWwuY29t',
+    //   authPassword: 'MzFlZTcxMTliNzYyYWMxYjMxZWU0MDRmNWZlNTVkZTQ',
+    // }),
     () => ({
-      brokerUrl: 'wss://vernmq.goqii.com:9002',
+      brokerUrl: 'tcp://vernmq.goqii.com:1883',
       userId: `6163344`,
       authId: 'bWFoZXNobWVzdHJpNzNAZ21haWwuY29t',
       authPassword: 'MzFlZTcxMTliNzYyYWMxYjMxZWU0MDRmNWZlNTVkZTQ',
