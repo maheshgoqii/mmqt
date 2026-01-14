@@ -179,25 +179,27 @@ export class MQTTConnectionManager {
                 const payload = JSON.parse(data.message);
 
                 // Route based on the "case" field from production logic
-                switch (payload.case) {
+                const enrichedPayload = { ...payload, topic: data.topic };
+
+                switch (enrichedPayload.case) {
                     case 'chatv2':
                     case 'clanchat':
                     case 'clipshare':
-                        this.onMessage?.(payload as ChatMessagePayload);
+                        this.onMessage?.(enrichedPayload as ChatMessagePayload);
                         break;
 
                     case 'add_reaction':
                     case 'remove_reaction':
-                        this.onReaction?.(payload as ReactionPayload);
+                        this.onReaction?.(enrichedPayload as ReactionPayload);
                         break;
 
                     case 'update_edit':
                     case 'update_delete':
-                        this.onUpdate?.(payload as MessageUpdatePayload);
+                        this.onUpdate?.(enrichedPayload as MessageUpdatePayload);
                         break;
 
                     default:
-                        this.onRawEvent?.(payload);
+                        this.onRawEvent?.(enrichedPayload);
                 }
             } catch (error) {
                 // If not JSON, it's a simple raw message

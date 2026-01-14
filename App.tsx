@@ -20,6 +20,8 @@ interface Message {
   topic: string;
   message: any;
   timestamp: Date;
+  senderId?: string;
+  isMe: boolean;
 }
 
 function App() {
@@ -39,7 +41,7 @@ function App() {
     authPassword: 'MzFlZTcxMTliNzYyYWMxYjMxZWU0MDRmNWZlNTVkZTQ',
   }), []);
 
-  // 1. Stabilize options
+  // 1. Stabilize options - Only handle connection/status here
   const mqttOptions = useMemo(() => ({
     onConnect: () => {
       console.log('✅ Connected to broker');
@@ -53,45 +55,36 @@ function App() {
       console.log('⚠️ Connection lost:', error);
       setStatus('connection_lost');
     },
-    onMessageReceived: (data: any) => {
-      console.log('📨 Message received:', data);
-      setLastEvent(`${new Date().toLocaleTimeString()} - ${data.topic}`);
-
-      let parsedMessage = data.message;
-      try {
-        parsedMessage = JSON.parse(data.message);
-      } catch (e) {
-        // Not JSON
-      }
-
-      setMessages((prev: Message[]) => [{
-        topic: data.topic,
-        message: parsedMessage,
-        timestamp: new Date(),
-      }, ...prev].slice(0, 50));
-    },
     onError: (error: any) => {
       console.error('❌ MQTT Error:', error);
       setStatus('error');
     },
   }), []);
 
-  // 2. Use the stable hook (now memoized internally)
+  // 2. Use the stable hook
   const mqttManager = useMQTTConnectionManager(mqttOptions);
 
-  // Setup structured listeners
+  // 3. Setup structured listeners for Chat Logic
   useEffect(() => {
     if (!mqttManager) return;
 
     mqttManager.onMessage = (data: any) => {
-      console.log('📨 Structured Message Arrival:', data.case);
+      console.log('📨 Message Arrived:', data.case, '-', data.message);
+      setLastEvent(`${new Date().toLocaleTimeString()} - ${data.topic}`);
+
       setMessages((prev: Message[]) => [{
-        topic: `[STRUCTURED] ${data.topic || 'Event'}`,
-        message: data,
+        topic: data.topic || 'Unknown',
+        message: data.message || JSON.stringify(data),
         timestamp: new Date(),
+        senderId: data.senderId,
+        isMe: data.senderId === mqttConfig.userId,
       }, ...prev].slice(0, 50));
     };
-  }, [mqttManager]);
+
+    mqttManager.onRawEvent = (payload: any) => {
+      console.log('❔ Raw Event:', payload);
+    };
+  }, [mqttManager, mqttConfig.userId]);
 
   const handleConnect = async () => {
     try {
@@ -112,15 +105,16 @@ function App() {
   };
 
   const handleSendFriendMsg = async () => {
-    if (status !== 'connected') {
-      console.warn('Cannot send: Not connected');
-      return;
-    }
+    if (status !== 'connected') return;
 
     try {
-      console.log('Attempting to send friend message...');
-      // The manager now handles the JSON wrapping internally!
+      console.log('Sending message to:', friendId);
       await mqttManager.sendFriendMessage(friendId, friendMessage);
+
+      // We explicitly add it to the list if we don't get our own echo back
+      // (GOQii clients usually get their own messages back if subscribed, 
+      // but adding locally gives instant feedback)
+      setFriendMessage('');
     } catch (e: any) {
       console.error('Send Error:', e.message);
     }
@@ -143,18 +137,18 @@ function App() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>GOQii MQTT Demo</Text>
+        <Text style={styles.headerTitle}>GOQii Chat Listen</Text>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
           <Text style={styles.statusText}>{status.toUpperCase()}</Text>
         </View>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
         {/* Connection Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Connection Control</Text>
-          <Text style={styles.infoText}>User ID: {mqttConfig.userId}</Text>
-          <Text style={[styles.infoText, { fontWeight: 'bold', color: '#2196F3' }]}>Last Event: {lastEvent}</Text>
+          <Text style={styles.sectionTitle}>Status</Text>
+          <Text style={styles.infoText}>My User ID: {mqttConfig.userId}</Text>
+          <Text style={[styles.infoText, { fontWeight: 'bold', color: '#2196F3' }]}>Last Received: {lastEvent}</Text>
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -175,9 +169,9 @@ function App() {
           </View>
         </View>
 
-        {/* Friend Messaging Section */}
+        {/* Listen / Send Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Friend Chat Logic</Text>
+          <Text style={styles.sectionTitle}>Chat with Friend</Text>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Friend ID:</Text>
@@ -190,89 +184,61 @@ function App() {
             />
           </View>
 
-          <TextInput
-            style={[styles.input, styles.messageInput]}
-            value={friendMessage}
-            onChangeText={setFriendMessage}
-            placeholder="Type private message..."
-            multiline
-          />
-
           <View style={styles.buttonGrid}>
             <TouchableOpacity
               style={[styles.smallButton, { backgroundColor: '#2196F3' }]}
               onPress={() => mqttManager.subscribeFriendChat(friendId)}
               disabled={status !== 'connected'}
             >
-              <Text style={styles.buttonText}>1. Subscribe</Text>
+              <Text style={styles.buttonText}>STEP 1: Listen to Friend</Text>
             </TouchableOpacity>
+          </View>
 
+          <View style={[styles.inputGroup, { marginTop: 15 }]}>
+            <TextInput
+              style={[styles.smallInput, styles.messageInput]}
+              value={friendMessage}
+              onChangeText={setFriendMessage}
+              placeholder="Type a message..."
+              multiline
+            />
             <TouchableOpacity
-              style={[styles.smallButton, { backgroundColor: '#4CAF50' }]}
+              style={[styles.sendButton, { opacity: status === 'connected' ? 1 : 0.5 }]}
               onPress={handleSendFriendMsg}
               disabled={status !== 'connected'}
             >
-              <Text style={styles.buttonText}>2. Send JSON</Text>
+              <Text style={styles.buttonText}>Send</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Global & Clan Operations */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Other Operations</Text>
-
-          <View style={styles.buttonGrid}>
-            <TouchableOpacity
-              style={[styles.smallButton, { backgroundColor: '#FF5722' }]}
-              onPress={() => mqttManager.subscribeNotifications()}
-              disabled={status !== 'connected'}
-            >
-              <Text style={styles.buttonText}>Notifications</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.smallButton, { backgroundColor: '#3F51B5' }]}
-              onPress={() => mqttManager.subscribeGroupChat(clanId)}
-              disabled={status !== 'connected'}
-            >
-              <Text style={styles.buttonText}>Clan Chat ({clanId})</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.smallButton, { backgroundColor: '#607D8B' }]}
-              onPress={() => mqttManager.publishPresence('online')}
-              disabled={status !== 'connected'}
-            >
-              <Text style={styles.buttonText}>Set Online</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Messages List */}
+        {/* Messages List - Chat Styled */}
         <View style={styles.section}>
           <View style={styles.messagesHeader}>
-            <Text style={styles.sectionTitle}>Message History ({messages.length})</Text>
+            <Text style={styles.sectionTitle}>Conversation</Text>
             <TouchableOpacity onPress={() => setMessages([])}>
               <Text style={styles.clearButton}>Clear</Text>
             </TouchableOpacity>
           </View>
 
           {messages.length === 0 ? (
-            <Text style={styles.emptyText}>Standing by for messages...</Text>
+            <Text style={styles.emptyText}>No messages yet. Subscribe and wait for a message!</Text>
           ) : (
-            messages.map((msg, index) => (
-              <View key={index} style={styles.messageCard}>
-                <View style={styles.messageHeader}>
-                  <Text style={styles.messageTopic}>{msg.topic}</Text>
-                  <Text style={styles.messageTime}>{msg.timestamp.toLocaleTimeString()}</Text>
+            <View style={styles.chatContainer}>
+              {messages.map((msg, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.messageBubble,
+                    msg.isMe ? styles.myBubble : styles.friendBubble
+                  ]}
+                >
+                  {!msg.isMe && <Text style={styles.senderLabel}>Friend ({msg.senderId}):</Text>}
+                  <Text style={styles.messageText}>{msg.message}</Text>
+                  <Text style={styles.timestampLabel}>{msg.timestamp.toLocaleTimeString()}</Text>
                 </View>
-                <Text style={styles.messageText}>
-                  {typeof msg.message === 'object'
-                    ? JSON.stringify(msg.message, null, 2)
-                    : String(msg.message)}
-                </Text>
-              </View>
-            ))
+              ))}
+            </View>
           )}
         </View>
       </ScrollView>
@@ -281,9 +247,9 @@ function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f0f0' },
+  container: { flex: 1, backgroundColor: '#E5DDD5' }, // WhatsApp-like background
   header: {
-    backgroundColor: '#1976D2',
+    backgroundColor: '#075E54',
     padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -300,51 +266,54 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     elevation: 3,
   },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#1976D2', marginBottom: 12 },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#128C7E', marginBottom: 12 },
   infoText: { fontSize: 13, color: '#666', marginBottom: 4 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 4,
-    padding: 10,
-    backgroundColor: '#f9f9f9',
-    marginBottom: 8,
-    color: '#333'
-  },
   inputGroup: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
   label: { fontSize: 14, color: '#333', width: 80 },
   smallInput: {
     flex: 1,
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 4,
-    padding: 8,
+    borderRadius: 8,
+    padding: 10,
     backgroundColor: '#f9f9f9',
     color: '#333'
   },
-  messageInput: { minHeight: 60, textAlignVertical: 'top' },
+  messageInput: { minHeight: 45, maxHeight: 100, textAlignVertical: 'center' },
   buttonRow: { flexDirection: 'row', gap: 8, marginTop: 5 },
   buttonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 5 },
   button: { flex: 1, padding: 12, borderRadius: 6, alignItems: 'center' },
-  smallButton: { flex: 1, minWidth: '40%', padding: 10, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { color: '#fff', fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
-  connectButton: { backgroundColor: '#4CAF50' },
+  smallButton: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  sendButton: { backgroundColor: '#128C7E', padding: 12, borderRadius: 25, width: 70, alignItems: 'center' },
+  buttonText: { color: '#fff', fontSize: 13, fontWeight: 'bold', textAlign: 'center' },
+  connectButton: { backgroundColor: '#25D366' },
   disconnectButton: { backgroundColor: '#757575' },
-  messagesHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  messagesHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   clearButton: { color: '#F44336', fontWeight: 'bold' },
-  emptyText: { textAlign: 'center', color: '#bbb', padding: 20, fontStyle: 'italic' },
-  messageCard: {
-    backgroundColor: '#f5f5f5',
+  emptyText: { textAlign: 'center', color: '#999', padding: 20, fontStyle: 'italic' },
+
+  // Chat Bubble Styles
+  chatContainer: { flexDirection: 'column' },
+  messageBubble: {
+    maxWidth: '85%',
     padding: 10,
-    borderRadius: 6,
-    marginBottom: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#1976D2'
+    borderRadius: 12,
+    marginBottom: 10,
+    elevation: 1,
   },
-  messageHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  messageTopic: { fontSize: 11, fontWeight: 'bold', color: '#1976D2' },
-  messageTime: { fontSize: 10, color: '#999' },
-  messageText: { fontSize: 13, color: '#333' },
+  myBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#DCF8C6',
+    borderTopRightRadius: 2,
+  },
+  friendBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 2,
+  },
+  senderLabel: { fontSize: 10, fontWeight: 'bold', color: '#128C7E', marginBottom: 2 },
+  messageText: { fontSize: 15, color: '#333' },
+  timestampLabel: { fontSize: 9, color: '#999', alignSelf: 'flex-end', marginTop: 4 },
 });
 
 export default App;

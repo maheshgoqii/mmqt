@@ -15,15 +15,26 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
 
   override fun getName() = NAME
 
-  private var mqttClient: MqttAndroidClient? = null
-  private var clientId: String? = null
-  private var serverUri: String? = null
-  private var mqttConnectOptions: MqttConnectOptions? = null
-
   companion object {
     const val NAME = "NativeMQTT"
     private const val TAG = "NativeMQTT"
+
+    // STATIC SINGLETON: Prevent multiple clients in the same process (even across reloads)
+    @set:Synchronized @get:Synchronized private var mqttClient: MqttAndroidClient? = null
+
+    @set:Synchronized @get:Synchronized private var activeCallback: MqttCallbackExtended? = null
+
+    private var currentClientId: String? = null
+    private var currentServerUri: String? = null
+    private var currentOptions: MqttConnectOptions? = null
   }
+
+  // Local instance references for easier access
+  private var internalMqttClient: MqttAndroidClient?
+    get() = mqttClient
+    set(value) {
+      mqttClient = value
+    }
 
   /** Initialize MQTT client with configuration */
   override fun initialize(
@@ -34,7 +45,7 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
   ) {
     try {
       // Parse required config
-      clientId = config.getString("clientId") ?: throw Exception("clientId is required")
+      val mClientId = config.getString("clientId") ?: throw Exception("clientId is required")
       val host = config.getString("host") ?: throw Exception("host is required")
       val port = config.getInt("port")
       val protocol = config.getString("protocol") ?: "tcp"
@@ -48,147 +59,67 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
                 else -> "tcp://$host:$port"
               }
 
-      Log.d(TAG, "Initializing MQTT client: $newServerUri (clientId: $clientId)")
+      Log.d(TAG, "Initializing MQTT client: $newServerUri (clientId: $mClientId)")
 
-      // OPTIMIZATION: Only skip recreation if the client exists, matches, AND is connected.
-      // If it's not connected, it might be in a "closed" state (e.g. after a destroy call),
-      // so it's safer to recreate it.
-      if (mqttClient != null &&
-                      serverUri == newServerUri &&
-                      this.clientId == clientId &&
-                      mqttClient?.isConnected == true
-      ) {
-        Log.d(TAG, "Matching active MQTT client already exists. Skipping recreation.")
+      // CHECK FOR EXISTING STATIC CLIENT
+      if (mqttClient != null && currentServerUri == newServerUri && currentClientId == mClientId) {
+        Log.d(TAG, "Matching MQTT client already exists in process. Reusing instance.")
+
+        // Refresh the callback to the current context's emitter
+        setupCallback()
+
         promise.resolve(null)
         return
       }
 
-      // CLEANUP: If a client exists but it's not active or config changed, clean it up.
-      mqttClient?.let { client ->
-        try {
-          Log.d(TAG, "Cleaning up existing MQTT client instance")
-          if (client.isConnected) {
-            client.disconnect()
-          }
-          client.unregisterResources()
-          // Note: Avoid aggressive close() here as it might be redundant if the object is being
-          // replaced immediately
-        } catch (e: Exception) {
-          Log.e(TAG, "Error during existing client cleanup", e)
-        }
-      }
+      // CLEANUP PREVIOUS STATIC CLIENT
+      cleanupClient()
 
-      // Update state
-      this.serverUri = newServerUri
-      this.clientId = clientId
+      // Update static state
+      currentServerUri = newServerUri
+      currentClientId = mClientId
 
       // Create new MQTT client
       mqttClient =
               MqttAndroidClient(
-                      reactApplicationContext,
-                      serverUri!!,
-                      clientId!!,
+                      reactApplicationContext
+                              .applicationContext, // Use App context for service longevity
+                      newServerUri,
+                      mClientId!!,
                       MemoryPersistence()
               )
 
       // Setup connection options
-      mqttConnectOptions =
+      val options =
               MqttConnectOptions().apply {
-                // Parse optional config
-                if (config.hasKey("username")) {
-                  userName = config.getString("username")
-                }
-                if (config.hasKey("password")) {
-                  password = config.getString("password")?.toCharArray()
-                }
-                if (config.hasKey("keepAlive")) {
-                  keepAliveInterval = config.getInt("keepAlive")
-                } else {
-                  keepAliveInterval = 60
-                }
-                if (config.hasKey("cleanSession")) {
-                  isCleanSession = config.getBoolean("cleanSession")
-                } else {
-                  isCleanSession = true
-                }
-                if (config.hasKey("reconnect")) {
-                  isAutomaticReconnect = config.getBoolean("reconnect")
-                } else {
-                  isAutomaticReconnect = true
-                }
-                if (config.hasKey("connectTimeout")) {
-                  connectionTimeout = config.getInt("connectTimeout")
-                } else {
-                  connectionTimeout = 30
-                }
+                if (config.hasKey("username")) userName = config.getString("username")
+                if (config.hasKey("password"))
+                        password = config.getString("password")?.toCharArray()
+                keepAliveInterval =
+                        if (config.hasKey("keepAlive")) config.getInt("keepAlive") else 60
+                isCleanSession =
+                        if (config.hasKey("cleanSession")) config.getBoolean("cleanSession")
+                        else true
+                isAutomaticReconnect =
+                        if (config.hasKey("reconnect")) config.getBoolean("reconnect") else true
+                connectionTimeout =
+                        if (config.hasKey("connectTimeout")) config.getInt("connectTimeout") else 30
 
-                // Handle Last Will and Testament
                 willConfig?.let { will ->
-                  val topic = will.getString("topic")
-                  val payload = will.getString("payload")
-                  val qos = will.getInt("qos")
-                  val retained = will.getBoolean("retained")
-
-                  if (topic != null && payload != null) {
-                    setWill(topic, payload.toByteArray(), qos, retained)
+                  val wTopic = will.getString("topic")
+                  val wPayload = will.getString("payload")
+                  val wQos = will.getInt("qos")
+                  val wRetained = will.getBoolean("retained")
+                  if (wTopic != null && wPayload != null) {
+                    setWill(wTopic, wPayload.toByteArray(), wQos, wRetained)
                   }
                 }
-
-                // TODO: Handle SSL/TLS configuration
-                // For SSL, you would set:
-                // socketFactory = getSslSocketFactory(sslConfig)
               }
 
-      // Set up callbacks
-      mqttClient?.setCallback(
-              object : MqttCallbackExtended {
-                override fun connectComplete(reconnect: Boolean, serverURI: String?) {
-                  Log.d(TAG, ">>> Connection Complete <<<")
-                  Log.d(TAG, "Reconnect: $reconnect")
-                  Log.d(TAG, "Server URI: $serverURI")
+      currentOptions = options
+      setupCallback()
 
-                  if (reconnect) {
-                    sendEvent("onReconnect", null)
-                  }
-                }
-
-                override fun connectionLost(cause: Throwable?) {
-                  Log.e(TAG, "!!! Connection Lost !!!")
-                  Log.e(TAG, "Cause: ${cause?.message}")
-                  cause?.printStackTrace()
-
-                  val params =
-                          Arguments.createMap().apply {
-                            putString("message", cause?.message ?: "Connection lost")
-                          }
-                  sendEvent("onConnectionLost", params)
-                }
-
-                override fun messageArrived(topic: String?, message: MqttMessage?) {
-                  val payload = message?.toString()
-                  Log.d(TAG, ">>> MQTT Message Arrived <<<")
-                  Log.d(TAG, "Topic: $topic")
-                  Log.d(TAG, "Payload: $payload")
-                  Log.d(TAG, "QoS: ${message?.qos}")
-
-                  val params =
-                          Arguments.createMap().apply {
-                            putString("topic", topic)
-                            putString("message", payload)
-                            putInt("qos", message?.qos ?: 0)
-                            putBoolean("retained", message?.isRetained ?: false)
-                          }
-                  sendEvent("onMessageReceived", params)
-                }
-
-                override fun deliveryComplete(token: IMqttDeliveryToken?) {
-                  Log.d(TAG, "Delivery complete")
-                  sendEvent("onDeliveryComplete", null)
-                }
-              }
-      )
-
-      Log.d(TAG, "MQTT client initialized successfully")
+      Log.d(TAG, "MQTT client initialized successfully (new instance)")
       promise.resolve(null)
     } catch (e: Exception) {
       Log.e(TAG, "Initialization error", e)
@@ -196,12 +127,80 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
     }
   }
 
+  private fun setupCallback() {
+    val client = mqttClient ?: return
+
+    activeCallback =
+            object : MqttCallbackExtended {
+              override fun connectComplete(reconnect: Boolean, serverURI: String?) {
+                Log.d(TAG, ">>> Connection Complete <<< Reconnect: $reconnect")
+                if (reconnect) sendEvent("onReconnect", null)
+              }
+
+              override fun connectionLost(cause: Throwable?) {
+                Log.e(TAG, "!!! Connection Lost !!! Reason: ${cause?.message}")
+                val params =
+                        Arguments.createMap().apply {
+                          putString("message", cause?.message ?: "Connection lost")
+                        }
+                sendEvent("onConnectionLost", params)
+              }
+
+              override fun messageArrived(topic: String?, message: MqttMessage?) {
+                val payload = message?.toString()
+                Log.d(TAG, ">>> MQTT Message Arrived <<<")
+                Log.d(TAG, "Topic: $topic")
+
+                val params =
+                        Arguments.createMap().apply {
+                          putString("topic", topic)
+                          putString("message", payload)
+                          putInt("qos", message?.qos ?: 0)
+                          putBoolean("retained", message?.isRetained ?: false)
+                        }
+                sendEvent("onMessageReceived", params)
+              }
+
+              override fun deliveryComplete(token: IMqttDeliveryToken?) {
+                sendEvent("onDeliveryComplete", null)
+              }
+            }
+
+    client.setCallback(activeCallback)
+  }
+
+  private fun cleanupClient() {
+    synchronized(this) {
+      mqttClient?.let { client ->
+        try {
+          Log.d(TAG, "Performing rigorous cleanup of existing client")
+          client.setCallback(null)
+          if (client.isConnected) {
+            client.disconnect()
+          }
+          client.unregisterResources()
+          client.close()
+        } catch (e: Exception) {
+          Log.e(TAG, "Cleanup error during replacement", e)
+        }
+      }
+      mqttClient = null
+      activeCallback = null
+    }
+  }
+
+  override fun onCatalystInstanceDestroy() {
+    super.onCatalystInstanceDestroy()
+    Log.d(TAG, "Catalyst instance destroying. Cleaning up callback link.")
+    mqttClient?.setCallback(null)
+    activeCallback = null
+  }
+
   /** Connect to MQTT broker */
   override fun connect(promise: Promise) {
     try {
       val client = mqttClient ?: throw Exception("Client not initialized. Call initialize() first.")
-      val options =
-              mqttConnectOptions ?: throw Exception("Options not set. Call initialize() first.")
+      val options = currentOptions ?: throw Exception("Options not set. Call initialize() first.")
 
       if (client.isConnected) {
         Log.d(TAG, "Client is already connected. Resolving immediately.")
@@ -209,7 +208,7 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
         return
       }
 
-      Log.d(TAG, "Connecting to MQTT broker: $serverUri")
+      Log.d(TAG, "Connecting to MQTT broker: $currentServerUri")
 
       client.connect(
               options,
@@ -219,8 +218,8 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
                   Log.d(TAG, "Connected successfully")
                   val params =
                           Arguments.createMap().apply {
-                            putString("serverUri", serverUri)
-                            putString("clientId", clientId)
+                            putString("serverUri", currentServerUri)
+                            putString("clientId", currentClientId)
                           }
                   sendEvent("onConnect", params)
                   promise.resolve(null)
@@ -291,7 +290,7 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
   override fun reconnect(promise: Promise) {
     try {
       val client = mqttClient ?: throw Exception("Client not initialized")
-      val options = mqttConnectOptions ?: throw Exception("Options not set")
+      val options = currentOptions ?: throw Exception("Options not set")
 
       if (client.isConnected) {
         Log.d(TAG, "Client is already connected. Resolving immediately.")
@@ -521,9 +520,9 @@ class NativeMQTTModule(reactContext: ReactApplicationContext) : NativeMQTTSpec(r
       }
 
       mqttClient = null
-      mqttConnectOptions = null
-      clientId = null
-      serverUri = null
+      currentOptions = null
+      currentClientId = null
+      currentServerUri = null
 
       Log.d(TAG, "MQTT client destroyed")
       sendEvent("onDestroy", null)
