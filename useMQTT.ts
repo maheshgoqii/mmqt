@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useMemo } from 'react';
-import { NativeEventEmitter, Platform } from 'react-native';
+import { NativeEventEmitter } from 'react-native';
 import NativeMQTT from './specs/NativeMQTT';
 
 const eventEmitter = new NativeEventEmitter(NativeMQTT as any);

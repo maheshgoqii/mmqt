@@ -1,4 +1,4 @@
-import { NativeEventEmitter, Platform, EmitterSubscription } from 'react-native';
+import { NativeEventEmitter, EmitterSubscription } from 'react-native';
 import NativeMQTT from '../specs/NativeMQTT';
 import type {
     MQTTConfig,
@@ -15,9 +15,7 @@ import type {
 
 // Create event emitter from the native module
 // For TurboModules, we pass the module instance to NativeEventEmitter.
-const eventEmitter = new NativeEventEmitter(
-    Platform.OS === 'ios' ? undefined : (NativeMQTT as any)
-);
+const eventEmitter = new NativeEventEmitter(NativeMQTT);
 
 // Re-export all spec types so consumers don't have to import from specs directly
 export type {

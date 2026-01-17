@@ -15,6 +15,11 @@
     "jsSrcsDir": "specs",
     "android": {
       "javaPackageName": "com.nativemqtt"
+    },
+    "ios": {
+      "modulesProvider": {
+        "NativeMQTT": "RCTMQTT"
+      }
     }
   },
   "dependencies": {

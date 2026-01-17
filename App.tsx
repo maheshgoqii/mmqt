@@ -146,7 +146,7 @@ function App() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>GOQii Chat Listen</Text>
+        <Text style={styles.headerTitle}>Chat Listen</Text>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
           <Text style={styles.statusText}>{status.toUpperCase()}</Text>
         </View>

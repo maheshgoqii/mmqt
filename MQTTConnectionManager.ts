@@ -1,6 +1,5 @@
 import { useMQTT } from './useMQTT';
 import {
-    GOQIIMQTTEvent,
     ChatMessagePayload,
     ReactionPayload,
     MessageUpdatePayload
@@ -201,7 +200,8 @@ export class MQTTConnectionManager {
                     default:
                         this.onRawEvent?.(enrichedPayload);
                 }
-            } catch (error) {
+            } catch (error: any) {
+                console.warn('error on onMessageReceive=>', error)
                 // If not JSON, it's a simple raw message
                 this.onRawEvent?.({
                     message: data.message,
