@@ -56,7 +56,6 @@ function App() {
     () => ({
       onConnect: () => {
         console.log('✅ Connected to broker');
-        setStatus('connected');
       },
       onDisconnect: () => {
         console.log('❌ Disconnected from broker');
@@ -109,6 +108,7 @@ function App() {
     try {
       setStatus('connecting...');
       await mqttManager.connect(mqttConfig);
+      setStatus('connected');
     } catch (error) {
       console.error('Connection error:', error);
       setStatus('error');

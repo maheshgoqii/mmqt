@@ -2,6 +2,7 @@ import type { TurboModule } from 'react-native';
 import { TurboModuleRegistry } from 'react-native';
 import type { EventEmitter } from 'react-native/Libraries/Types/CodegenTypes';
 
+
 export interface MQTTConfig {
     clientId: string;
     host: string;
@@ -24,10 +25,10 @@ export interface MQTTSSLConfig {
 }
 
 export interface MQTTWillConfig {
-    topic: string;
-    payload: string;
-    qos: number; // 0, 1, or 2
-    retained: boolean;
+    topic?: string;
+    payload?: string;
+    qos?: number; // 0, 1, or 2
+    retained?: boolean;
 }
 
 export interface MQTTPublishOptions {

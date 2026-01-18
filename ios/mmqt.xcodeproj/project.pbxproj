@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		03D6AA382F1B81CE00295393 /* RCTMQTT.mm in Sources */ = {isa = PBXBuildFile; fileRef = 03D6AA372F1B81CE00295393 /* RCTMQTT.mm */; };
+		03D6AA532F1C9D7200295393 /* MQTTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D6AA522F1C9D7200295393 /* MQTTService.swift */; };
 		0C80B921A6F3F58F76C31292 /* libPods-mmqt.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-mmqt.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
@@ -19,6 +20,7 @@
 		03D6AA352F1B81CE00295393 /* mmqt-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "mmqt-Bridging-Header.h"; sourceTree = "<group>"; };
 		03D6AA362F1B81CE00295393 /* RCTMQTT.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RCTMQTT.h; sourceTree = "<group>"; };
 		03D6AA372F1B81CE00295393 /* RCTMQTT.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RCTMQTT.mm; sourceTree = "<group>"; };
+		03D6AA522F1C9D7200295393 /* MQTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MQTTService.swift; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* mmqt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mmqt.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = mmqt/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = mmqt/Info.plist; sourceTree = "<group>"; };
@@ -49,6 +51,7 @@
 				03D6AA362F1B81CE00295393 /* RCTMQTT.h */,
 				03D6AA372F1B81CE00295393 /* RCTMQTT.mm */,
 				03D6AA352F1B81CE00295393 /* mmqt-Bridging-Header.h */,
+				03D6AA522F1C9D7200295393 /* MQTTService.swift */,
 			);
 			path = RCTMQTT;
 			sourceTree = "<group>";
@@ -125,8 +128,8 @@
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
-				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
+				C17411A33CD0E16B2827C29C /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -198,7 +201,7 @@
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"\\\"$WITH_ENVIRONMENT\\\" \\\"$REACT_NATIVE_XCODE\\\"\"\n";
 		};
-		00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */ = {
+		C17411A33CD0E16B2827C29C /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -261,6 +264,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				03D6AA532F1C9D7200295393 /* MQTTService.swift in Sources */,
 				03D6AA382F1B81CE00295393 /* RCTMQTT.mm in Sources */,
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
 			);

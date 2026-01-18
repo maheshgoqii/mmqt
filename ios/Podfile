@@ -23,6 +23,9 @@ target 'mmqt' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
+  pod 'CocoaMQTT/WebSockets', :modular_headers => true # it include CocoaMQTT -> not need to add CocoaMQTT
+  pod 'MqttCocoaAsyncSocket', :modular_headers => true
+  pod 'Starscream', :modular_headers => true
 
   post_install do |installer|
     react_native_post_install(
